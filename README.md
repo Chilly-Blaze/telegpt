@@ -7,7 +7,8 @@ Ensure that the python3 environment exists
 1. Download ZIP and Extract
 2. Move to the project directory(`cd [download dir]/telegpt`)
 3. `pip install -r requirements.txt`
-4. `python3 -u main.py`
+4. Modify the `tele_api` and `chat_api` in `config.json` to your own
+5. `python3 -u main.py`
 
 ## Usage
 
