@@ -2,7 +2,7 @@
 Telegram Bot + ChatGPT3.5 with customized prompt
 
 ## Installation
-Ensure that the python3 environment exists
+Ensure that the **>=python3.10** environment exists
 
 1. Download ZIP and Extract
 2. Move to the project directory(`cd [download dir]/telegpt`)
