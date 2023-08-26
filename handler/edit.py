@@ -1,47 +1,61 @@
-from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
-from telegram.ext import CommandHandler, ContextTypes, CallbackQueryHandler, ConversationHandler, MessageHandler, filters
-from util import CHAT, EDIT, choose_template, reshape, set_mode, match
+from telegram import Message, Update, InlineKeyboardButton, InlineKeyboardMarkup
+from telegram.ext import CommandHandler, ContextTypes, CallbackQueryHandler, MessageHandler, filters
+from log import log, statics
+from util import CHAT, EDIT, authen, get_prompt, operate_prompt, plain_text, prompt_buttons, reshape
+from telegram.constants import ParseMode
 
 
-async def choose_edit(update: Update, context: ContextTypes.DEFAULT_TYPE):
+# /edit (authen)
+async def edit(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    if not authen(update, context):
+        return CHAT
+    assert update.message
     text = context.bot_data['hint']['edit_choose']
-    await choose_template(update, context, text)
+    assert context.chat_data is not None
+    context.chat_data['last'] = await update.message.reply_text(
+        text, reply_markup=prompt_buttons()
+    )
     return EDIT
 
 
 async def callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
-    assert query and query.data and query.message and context.user_data is not None
+    assert query and query.data is not None
     await query.answer()
-    context.user_data['edit'] = query.data
-    context.user_data['del_id'] = (query.message.chat_id,
-                                   query.message.message_id)
+    assert context.chat_data is not None
+    context.chat_data['edit'] = query.data
     button = InlineKeyboardMarkup(
-        reshape([
-            InlineKeyboardButton(text=context.bot_data['hint']['back_inline'],
-                                 callback_data='back')
-        ]))
-    await query.edit_message_text(context.bot_data['hint']['edit'].format(
-        query.data),
-                                  reply_markup=button)
+        reshape([InlineKeyboardButton(text='back', callback_data='back')])
+    )
+    await query.edit_message_text(
+        context.bot_data['hint']['edit'].format(
+            query.data, plain_text(get_prompt(query.data))
+        ),
+        reply_markup=button,
+        parse_mode=ParseMode.HTML,
+    )
     return EDIT
 
 
 async def message(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    assert update.message is not None
-    if context.user_data is None or 'edit' not in context.user_data:
-        await update.message.reply_text(context.bot_data['hint']['edit_empty'])
-        return 0
-    mode = context.user_data['edit']
-    context.user_data.pop('edit')
+    assert update.message and context.chat_data is not None
+    msg: Message = context.chat_data['last']
+    if 'edit' not in context.chat_data:
+        await msg.edit_text(
+            context.bot_data['hint']['edit_empty'], reply_markup=prompt_buttons()
+        )
+        await update.message.delete()
+        return EDIT
+    mode = context.chat_data.pop('edit')
     text = update.message.text
-    context.bot_data['prompt'][mode] = text
-    set_mode(mode, text)
-    await update.message.reply_text(context.bot_data['hint']['edit_complete'])
-    await context.bot.delete_message(*context.user_data.pop('del_id'))
+    old_text = get_prompt(mode)
+    operate_prompt(mode, '' if text is None else text)
+    await update.message.delete()
+    await msg.edit_text(context.bot_data['hint']['edit_complete'])
+    log(update.message.from_user, statics.edit.format(old_text, text))
     return CHAT
 
 
-edit_handler = CommandHandler('edit', choose_edit)
-edit_callback = CallbackQueryHandler(callback, match)
+edit_handler = CommandHandler('edit', edit)
+edit_callback = CallbackQueryHandler(callback, r'[^(back)]')
 edit_complete = MessageHandler(filters.TEXT, message)

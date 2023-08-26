@@ -1,12 +1,55 @@
 import json
-
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.ext import ContextTypes
+from log import WARN, log, statics
+import inspect
 
-# status
-CHAT, NEW, EDIT, SWITCH, DEL, SHOW = range(6)
+# State
+CONFIG = './config.json'
+HINT = './hint.json'
+PROMPT = './prompt.json'
+DEFAULT = 'default'
+CHAT, NEW, EDIT, SWITCH, DEL, SHOW = [object() for _ in range(6)]
 
 
+def read_file(path: str) -> dict:
+    with open(path, 'r') as f:
+        return json.load(f)
+
+
+def write_file(content: dict, path: str) -> None:
+    with open(path, 'w') as f:
+        json.dump(content, f, ensure_ascii=False)
+
+
+# Get config content
+def get_config():
+    return read_file(CONFIG)
+
+
+# Get prompt content
+def get_prompt(name: str | None = DEFAULT):
+    return read_file(PROMPT).get(name, '')
+
+
+# Add/Del prompt
+def operate_prompt(key: str | None, value='', add=True):
+    assert key
+    content = read_file(PROMPT)
+    if add:
+        content[key] = value
+    else:
+        content.pop(key, '')
+    write_file(content, PROMPT)
+
+
+# Get hint content
+def get_hint():
+    with open('./hint.json', 'r') as f:
+        return json.load(f)
+
+
+# Button layout
 def reshape(tar):
     ret = []
     for i in range(1, len(tar), 2):
@@ -16,41 +59,28 @@ def reshape(tar):
     return ret
 
 
-def get_modes():
-    with open('./config.json', 'r') as f:
-        con = json.load(f)
-    return list(con['prompt'].keys())
+# Authentication
+def authen(update: Update, context: ContextTypes.DEFAULT_TYPE) -> bool:
+    assert update.message
+    user = update.message.from_user
+    if user is None or str(user.id) != context.bot_data['master']:
+        log(user, statics.illegal.format(inspect.stack()[1].function), WARN)
+        return False
+    return True
 
 
-def set_mode(mode, text):
-    with open('./config.json', 'r') as f:
-        con = json.load(f)
-        con['prompt'][mode] = text
-    with open('./config.json', 'w') as f:
-        json.dump(con, f, ensure_ascii=False)
+# Prompt choose button
+def prompt_buttons():
+    return InlineKeyboardMarkup(
+        reshape(
+            [
+                InlineKeyboardButton(text=key, callback_data=key)
+                for key in {**read_file(PROMPT), 'back': ''}
+            ]
+        )
+    )
 
 
-def del_mode(mode):
-    with open('./config.json', 'r') as f:
-        con = json.load(f)
-        con['prompt'].pop(mode)
-    with open('./config.json', 'w') as f:
-        json.dump(con, f, ensure_ascii=False)
-
-
-def match(data):
-    return data in get_modes()
-
-
-async def choose_template(update: Update, context: ContextTypes.DEFAULT_TYPE,
-                          text: str):
-    button = InlineKeyboardMarkup(
-        reshape([
-            InlineKeyboardButton(text=key, callback_data=key)
-            for key in context.bot_data['prompt']
-        ] + [
-            InlineKeyboardButton(text=context.bot_data['hint']['back_inline'],
-                                 callback_data='back')
-        ]))
-    assert update.message is not None
-    await update.message.reply_text(text=text, reply_markup=button)
+# Convert to plain text
+def plain_text(s: str) -> str:
+    return s.replace('&', '&amp;').replace('<', '&lt;').replace('>', '&gt;')

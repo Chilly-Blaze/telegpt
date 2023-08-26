@@ -1,40 +1,56 @@
 from telegram import Update
+from telegram.constants import ParseMode
 from telegram.ext import CommandHandler, ContextTypes, CallbackQueryHandler
-from util import choose_template, CHAT, SWITCH, match
+from chatapi import ChatManager
+from log import log, statics
+from util import prompt_buttons, CHAT, SWITCH
 
 
-async def choose_switch(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    text = context.bot_data['hint']['switch_choose'].format(
-        context.bot_data['mode'])
-    await choose_template(update, context, text)
+# /switch
+async def switch(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    assert update.message
+    manager: ChatManager = context.bot_data['manager']
+    user = update.message.from_user
+    text = context.bot_data['hint']['switch_choose'].format(manager.get(user).mode)
+    await update.message.reply_text(
+        text, reply_markup=prompt_buttons(), parse_mode=ParseMode.HTML
+    )
     return SWITCH
 
 
 async def callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    assert update.callback_query
     query = update.callback_query
-    assert query is not None
+    manager: ChatManager = context.bot_data['manager']
+    user = query.from_user
+    mode = manager.get(user).mode
     await query.answer()
-    if context.bot_data['mode'] == query.data:
+    if mode == query.data:
         await query.edit_message_text(
-            text=context.bot_data['hint']['switch_equal'].format(query.data))
+            text=context.bot_data['hint']['switch_equal'].format(query.data),
+            parse_mode=ParseMode.HTML,
+        )
     else:
-        context.bot_data['mode'] = query.data
-        context.bot_data['chat'].reset(
-            system_prompt=context.bot_data['prompt'][query.data])
+        manager.new(user, query.data)
         await query.edit_message_text(
-            text=context.bot_data['hint']['switch_succ'].format(query.data))
+            text=context.bot_data['hint']['switch_succ'].format(query.data),
+            parse_mode=ParseMode.HTML,
+        )
+        log(user, statics.switch.format(mode, query.data))
     return CHAT
 
 
+# /reset
 async def reset(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    mode = context.bot_data['mode']
-    context.bot_data['chat'].reset(
-        system_prompt=context.bot_data['prompt'][mode])
     assert update.message is not None
+    user = update.message.from_user
+    manager: ChatManager = context.bot_data['manager']
+    manager.new(user, manager.get(user).mode)
     await update.message.reply_text(text=context.bot_data['hint']['reset'])
+    log(user, statics.reset.format(manager.get(user).mode))
     return CHAT
 
 
 reset_handler = CommandHandler('reset', reset)
-switch_handler = CommandHandler('switch', choose_switch)
-switch_callback = CallbackQueryHandler(callback, match)
+switch_handler = CommandHandler('switch', switch)
+switch_callback = CallbackQueryHandler(callback, r'[^(back)]')
