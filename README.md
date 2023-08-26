@@ -17,7 +17,7 @@ Ensure that the python3 environment exists
 ## Usage
 
 ### All users' permissions
-- `/start` Start to conversation.
+- `/start [entry_key]` Start to conversation.
 - `/reset` Reset current prompt. It will delete history conversation.
 - `/show` Show a role's prompt.
 - `/now` Show current prompt.
